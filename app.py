@@ -301,7 +301,7 @@ from openpyxl import load_workbook
 def write_usage_to_template(template_bytes, headers, usage_lines_final):
     """
     Fill the Excel template with header details and dynamic usage lines.
-
+    
     Arguments:
       template_bytes: bytes of the Excel template
       headers: dict with fixed fields (Customer Name, NMI, Retailer, etc.)
@@ -309,10 +309,23 @@ def write_usage_to_template(template_bytes, headers, usage_lines_final):
           [
               {"Units": "22491.80", "Description": "Peak", "Rate": "0.0632", "Discount": ""},
               {"Units": "25764.91", "Description": "Off-Peak", "Rate": "0.0355", "Discount": ""},
-              {"Units": "4635.60", "Description": "Demand", "Rate": "0.3124", "Discount": ""},
-              {"Units": "30", "Description": "Supply Charge", "Rate": "3.6165", "Discount": ""},
           ]
     """
+
+    def safe_val(v):
+        """Convert values into Excel-safe format"""
+        if v is None:
+            return ""
+        if isinstance(v, (list, dict)):
+            return str(v)  # flatten to text
+        try:
+            # keep numbers as numbers
+            if isinstance(v, (int, float)):
+                return v
+            s = str(v).strip()
+            return float(s) if s.replace(".", "", 1).isdigit() else s
+        except Exception:
+            return str(v)
 
     # Load workbook from bytes
     input_stream = io.BytesIO(template_bytes)
@@ -320,42 +333,39 @@ def write_usage_to_template(template_bytes, headers, usage_lines_final):
     ws = wb.active
 
     # ---- Header section ----
-    ws["A6"]  = headers.get("Customer Name", "")
-    ws["B15"] = headers.get("Meter Type", "")
-    ws["B16"] = headers.get("Tariff Classification", "")
-    ws["B17"] = headers.get("Distribution Region", "")
-    ws["B18"] = headers.get("Site Address", "")
-    ws["B19"] = headers.get("NMI", "")
-    ws["B20"] = headers.get("Retailer", "")
+    ws["A6"]  = safe_val(headers.get("Customer Name"))
+    ws["B15"] = safe_val(headers.get("Meter Type"))
+    ws["B16"] = safe_val(headers.get("Tariff Classification"))
+    ws["B17"] = safe_val(headers.get("Distribution Region"))
+    ws["B18"] = safe_val(headers.get("Site Address"))
+    ws["B19"] = safe_val(headers.get("NMI"))
+    ws["B20"] = safe_val(headers.get("Retailer"))
 
     # ---- Current Energy Offer table ----
-    # starting row of table (adjust this to match your template!)
-    start_row = 34
+    start_row = 34  # adjust if your template rows shift
 
     # fixed column indexes
-    unit_col = 1   # A → Units
-    desc_col = 3   # C → Description
-    before_col = 4 # D → Before Discount
-    disc_col = 5   # E → Conditional Discount
+    unit_col   = 1  # A → Units
+    desc_col   = 3  # C → Description
+    before_col = 4  # D → Before Discount
+    disc_col   = 5  # E → Conditional Discount
 
     # Fill dynamic rows
     for i, line in enumerate(usage_lines_final):
         r = start_row + i
 
-        # Ensure dict format
-        if isinstance(line, dict):
-            ws.cell(row=r, column=unit_col,   value=line.get("Units", ""))
-            ws.cell(row=r, column=desc_col,   value=line.get("Description", ""))
-            ws.cell(row=r, column=before_col, value=line.get("Rate", ""))
-            ws.cell(row=r, column=disc_col,   value=line.get("Discount", ""))
-        else:
+        if not isinstance(line, dict):
             raise ValueError(f"Usage line must be dict, got: {line}")
+
+        ws.cell(row=r, column=unit_col,   value=safe_val(line.get("Units")))
+        ws.cell(row=r, column=desc_col,   value=safe_val(line.get("Description")))
+        ws.cell(row=r, column=before_col, value=safe_val(line.get("Rate")))
+        ws.cell(row=r, column=disc_col,   value=safe_val(line.get("Discount")))
 
     # Save updated workbook to bytes
     output = io.BytesIO()
     wb.save(output)
 
-    # Return stream + output filename
     return output, "filled_quote.xlsx"
 
 
