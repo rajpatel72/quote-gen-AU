@@ -294,22 +294,10 @@ def find_header_start(ws) -> Tuple[int, Dict[str, int]]:
         return header_row, col_map
     return None, {}
 
-
-import io
-from openpyxl import load_workbook
-
+print("DEBUG usage_lines_final:", usage_lines_final)
 def write_usage_to_template(template_bytes, headers, usage_lines_final):
     """
     Fill the Excel template with header details and dynamic usage lines.
-    
-    Arguments:
-      template_bytes: bytes of the Excel template
-      headers: dict with fixed fields (Customer Name, NMI, Retailer, etc.)
-      usage_lines_final: list of dicts with dynamic usage rows, e.g.
-          [
-              {"Units": "22491.80", "Description": "Peak", "Rate": "0.0632", "Discount": ""},
-              {"Units": "25764.91", "Description": "Off-Peak", "Rate": "0.0355", "Discount": ""},
-          ]
     """
 
     def safe_val(v):
@@ -319,7 +307,6 @@ def write_usage_to_template(template_bytes, headers, usage_lines_final):
         if isinstance(v, (list, dict)):
             return str(v)  # flatten to text
         try:
-            # keep numbers as numbers
             if isinstance(v, (int, float)):
                 return v
             s = str(v).strip()
@@ -327,7 +314,6 @@ def write_usage_to_template(template_bytes, headers, usage_lines_final):
         except Exception:
             return str(v)
 
-    # Load workbook from bytes
     input_stream = io.BytesIO(template_bytes)
     wb = load_workbook(input_stream)
     ws = wb.active
@@ -342,15 +328,12 @@ def write_usage_to_template(template_bytes, headers, usage_lines_final):
     ws["B20"] = safe_val(headers.get("Retailer"))
 
     # ---- Current Energy Offer table ----
-    start_row = 34  # adjust if your template rows shift
-
-    # fixed column indexes
+    start_row = 34
     unit_col   = 1  # A → Units
     desc_col   = 3  # C → Description
     before_col = 4  # D → Before Discount
     disc_col   = 5  # E → Conditional Discount
 
-    # Fill dynamic rows
     for i, line in enumerate(usage_lines_final):
         r = start_row + i
 
@@ -362,7 +345,6 @@ def write_usage_to_template(template_bytes, headers, usage_lines_final):
         ws.cell(row=r, column=before_col, value=safe_val(line.get("Rate")))
         ws.cell(row=r, column=disc_col,   value=safe_val(line.get("Discount")))
 
-    # Save updated workbook to bytes
     output = io.BytesIO()
     wb.save(output)
 
