@@ -18,6 +18,7 @@ import io
 import re
 from typing import List, Dict, Tuple
 
+
 import streamlit as st
 import pdfplumber
 from PIL import Image, ImageOps, ImageFilter
@@ -294,66 +295,68 @@ def find_header_start(ws) -> Tuple[int, Dict[str, int]]:
     return None, {}
 
 
-def write_usage_to_template(template_bytes: bytes, header_fields: Dict[str, str], usage_lines: List[Dict], output_name="filled_quote.xlsx"):
-    """Load template from bytes, find header row, start writing data under the data-area, map columns accordingly."""
-    wb = load_workbook(io.BytesIO(template_bytes))
+import io
+from openpyxl import load_workbook
+
+def write_usage_to_template(template_bytes, headers, usage_lines_final):
+    """
+    Fill the Excel template with header details and dynamic usage lines.
+
+    Arguments:
+      template_bytes: bytes of the Excel template
+      headers: dict with fixed fields (Customer Name, NMI, Retailer, etc.)
+      usage_lines_final: list of dicts with dynamic usage rows, e.g.
+          [
+              {"Units": "22491.80", "Description": "Peak", "Rate": "0.0632", "Discount": ""},
+              {"Units": "25764.91", "Description": "Off-Peak", "Rate": "0.0355", "Discount": ""},
+              {"Units": "4635.60", "Description": "Demand", "Rate": "0.3124", "Discount": ""},
+              {"Units": "30", "Description": "Supply Charge", "Rate": "3.6165", "Discount": ""},
+          ]
+    """
+
+    # Load workbook from bytes
+    input_stream = io.BytesIO(template_bytes)
+    wb = load_workbook(input_stream)
     ws = wb.active
 
-    # Fill some header fields - cell locations based on your fixed template (these can be adjusted)
-    # These are examples based on earlier messages: adjust if your template uses different cells.
-    try:
-        if header_fields.get("Customer Name"):
-            ws["A6"] = header_fields.get("Customer Name")
-        if header_fields.get("Meter Type"):
-            ws["B15"] = header_fields.get("Meter Type")
-        if header_fields.get("Tariff Classification"):
-            ws["B16"] = header_fields.get("Tariff Classification")
-        if header_fields.get("Distribution Region"):
-            ws["B17"] = header_fields.get("Distribution Region")
-        if header_fields.get("Site Address"):
-            ws["B18"] = header_fields.get("Site Address")
-        if header_fields.get("NMI"):
-            ws["B19"] = header_fields.get("NMI")
-        if header_fields.get("Retailer"):
-            ws["B20"] = header_fields.get("Retailer")
-        if header_fields.get("Account Number"):
-            # pick a sensible cell if present in template
-            ws["O6"] = header_fields.get("Account Number")
-    except Exception:
-        # ignore if some cells missing
-        pass
+    # ---- Header section ----
+    ws["A6"]  = headers.get("Customer Name", "")
+    ws["B15"] = headers.get("Meter Type", "")
+    ws["B16"] = headers.get("Tariff Classification", "")
+    ws["B17"] = headers.get("Distribution Region", "")
+    ws["B18"] = headers.get("Site Address", "")
+    ws["B19"] = headers.get("NMI", "")
+    ws["B20"] = headers.get("Retailer", "")
 
-    # Find header row (Units / Description). If not found, fallback to a fixed start row (e.g., 34).
-    header_row, col_map = find_header_start(ws)
-    if header_row:
-        # start writing two rows below header_row (usually header row then maybe one formatting row)
-        start_row = header_row + 2
-        # If we didn't find mapping for specific columns, assume fixed mapping:
-        units_col = col_map.get("Units") or 1       # A
-        desc_col = col_map.get("Description") or 3   # C
-        before_col = col_map.get("Before Discount") or 4  # D
-        cond_col = col_map.get("Conditional Discount") or 5  # E
-    else:
-        # fallback: fixed assumptions (these match the template you shared)
-        start_row = 34
-        units_col = 1   # A
-        desc_col = 3    # C
-        before_col = 4  # D
-        cond_col = 5    # E
+    # ---- Current Energy Offer table ----
+    # starting row of table (adjust this to match your template!)
+    start_row = 34
 
-    # write lines
-    for i, line in enumerate(usage_lines):
+    # fixed column indexes
+    unit_col = 1   # A → Units
+    desc_col = 3   # C → Description
+    before_col = 4 # D → Before Discount
+    disc_col = 5   # E → Conditional Discount
+
+    # Fill dynamic rows
+    for i, line in enumerate(usage_lines_final):
         r = start_row + i
-        ws.cell(row=r, column=units_col, value=line.get("Units") or "")
-        ws.cell(row=r, column=desc_col, value=line.get("Description") or "")
-        ws.cell(row=r, column=before_col, value=line.get("Rate") or "")
-        ws.cell(row=r, column=cond_col, value=line.get("Discount") or "")
 
-    # Save to bytes
-    out = io.BytesIO()
-    wb.save(out)
-    out.seek(0)
-    return out, output_name
+        # Ensure dict format
+        if isinstance(line, dict):
+            ws.cell(row=r, column=unit_col,   value=line.get("Units", ""))
+            ws.cell(row=r, column=desc_col,   value=line.get("Description", ""))
+            ws.cell(row=r, column=before_col, value=line.get("Rate", ""))
+            ws.cell(row=r, column=disc_col,   value=line.get("Discount", ""))
+        else:
+            raise ValueError(f"Usage line must be dict, got: {line}")
+
+    # Save updated workbook to bytes
+    output = io.BytesIO()
+    wb.save(output)
+
+    # Return stream + output filename
+    return output, "filled_quote.xlsx"
 
 
 # -----------------------
