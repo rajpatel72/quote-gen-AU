@@ -1,0 +1,7 @@
+streamlit
+pdfplumber
+pytesseract
+pillow
+openpyxl
+pandas
+pdf2image   # optional, only if you install poppler on host
